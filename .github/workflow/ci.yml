@@ -1,0 +1,29 @@
+name: Deploy To Github pages
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set env
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.8.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install and Build
+        run: |
+          pnpm install
+          pnpm build:github
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        with:
+          branch: gh-pages
+          folder: dist
