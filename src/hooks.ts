@@ -56,7 +56,7 @@ export function getMatchConfig(colsKey: ColsType, colsValue: ColsType) {
   for (let i = 0; i < colsKey.length; i++) {
     const key = colsKey[i] || "";
     if (key) {
-      result[key] = colsValue[i];
+      result[String(key).trim()] = colsValue[i];
     }
   }
   return result;
@@ -68,9 +68,12 @@ export function fillValues(
   colsKey: ColsType,
   fillCol: string
 ) {
+  fillCol = fillCol.trim();
   const len = colsKey.length;
   for (let i = 1; i <= len; i++) {
     const key = colsKey[i];
-    sheet.getCell(fillCol + i).value = config[key];
+    if (key && config[String(key).trim()] && sheet.getCell(fillCol + i)) {
+      sheet.getCell(fillCol + i).value = config[String(key).trim()];
+    }
   }
 }

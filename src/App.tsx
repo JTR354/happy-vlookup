@@ -23,6 +23,7 @@ import {
   saveFile,
 } from "./hooks";
 import type Excel from "exceljs";
+import type { UploadFile } from "antd";
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -118,6 +119,49 @@ const PickerPanel: FC<PickPanelProps> = ({
     { workbook: Excel.Workbook; uid: string; type: string; name: string }[]
   >([]);
 
+  const [fileList, setFileList] = useState<UploadFile<File>[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      console.log("load file timer 200");
+      next(0);
+    }, 200);
+
+    async function next(i = 0) {
+      const file = fileList[i];
+      if (file == null) {
+        if (!workBookListRef.current.length) return;
+        const configSheets = getSheets(workBookListRef.current[0].workbook);
+        setSheetOptions(
+          configSheets.map((it, index) => {
+            return {
+              label: it.name,
+              value: index,
+            };
+          })
+        );
+        setSheetIndex(0);
+        return;
+      }
+      const workbook = await loadFile(file as unknown as File);
+      workBookListRef.current.push({
+        workbook,
+        uid: file.uid,
+        name: file.name,
+        type:
+          file.type ||
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      setTimeout(() => {
+        next(i + 1);
+      }, 50);
+    }
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [fileList]);
+
   const uploadProps: UploadProps<File> = {
     accept:
       "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -125,9 +169,9 @@ const PickerPanel: FC<PickPanelProps> = ({
       return false;
     },
     async onChange(info) {
-      console.log(workBookListRef.current);
       const file = info.file;
       if (file == null) return;
+      setFileList((f) => f.concat([file]));
       if (file.status === "removed") {
         workBookListRef.current = workBookListRef.current.filter((it) => {
           return it.uid !== file.uid;
@@ -142,25 +186,6 @@ const PickerPanel: FC<PickPanelProps> = ({
         setIsOk(false);
         return;
       }
-      const workbook = await loadFile(file as unknown as File);
-      workBookListRef.current.push({
-        workbook,
-        uid: file.uid,
-        name: file.name,
-        type:
-          file.type ||
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
-      const configSheets = getSheets(workbook);
-      setSheetOptions(
-        configSheets.map((it, index) => {
-          return {
-            label: it.name,
-            value: index,
-          };
-        })
-      );
-      setSheetIndex(0);
     },
   };
   const currentSheet = useMemo(() => {
@@ -194,11 +219,20 @@ const PickerPanel: FC<PickPanelProps> = ({
     selectConfig?.(colsKey, colsValue);
     if (config == null) return;
     if (!workBookListRef.current.length) return;
-    for (const it of workBookListRef.current) {
-      const sheet = getSheets(it.workbook)[sheetIndex as number];
-      fillValues(sheet, config, colsKey, colV);
+    function next(i = 0) {
+      const it = workBookListRef.current[i];
+      if (it == null) {
+        setIsOk(true);
+        return;
+      }
+      const { workbook } = it;
+      const sheet = getSheets(workbook)[sheetIndex as number];
+      fillValues(sheet, config as ConfigType, getColumn(sheet, colK), colV);
+      setTimeout(() => {
+        next(i + 1);
+      }, 50);
     }
-    setIsOk(true);
+    next(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSheet, colV, colK]);
 
@@ -270,8 +304,15 @@ const PickerPanel: FC<PickPanelProps> = ({
           type="primary"
           onClick={() => {
             if (!workBookListRef.current.length) return;
-            for (const { workbook, type, name } of workBookListRef.current) {
+            next(0);
+            function next(i = 0) {
+              const it = workBookListRef.current[i];
+              if (it == null) return;
+              const { workbook, type, name } = it;
               saveFile(workbook, type, "ok-" + name);
+              setTimeout(() => {
+                next(i + 1);
+              }, 100);
             }
           }}
         >
