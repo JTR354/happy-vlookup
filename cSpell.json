@@ -2,7 +2,10 @@
   "words": [
     "antd",
     "exceljs",
+    "officedocument",
+    "openxmlformats",
     "sider",
+    "spreadsheetml",
     "vlookup"
   ]
 }

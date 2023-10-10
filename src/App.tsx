@@ -11,9 +11,8 @@ import {
   Col,
 } from "antd";
 import type { UploadProps } from "antd/es/upload/interface";
-import { UploadOutlined } from "@ant-design/icons";
+import { UploadOutlined, InboxOutlined } from "@ant-design/icons";
 import {
-  ColsType,
   ConfigType,
   fillValues,
   getColumn,
@@ -25,8 +24,9 @@ import {
 } from "./hooks";
 import type Excel from "exceljs";
 
-const { Header, Footer, Content } = Layout;
+const { Header, Content } = Layout;
 const { Title } = Typography;
+const { Dragger } = Upload;
 
 const headerStyle: React.CSSProperties = {
   textAlign: "center",
@@ -42,17 +42,8 @@ const siderStyle: React.CSSProperties = {
   backgroundColor: "#3ba0e9",
 };
 
-const footerStyle: React.CSSProperties = {
-  textAlign: "center",
-  color: "#fff",
-  backgroundColor: "#7dbcea",
-};
-
 const App: React.FC = () => {
   const [config, setConfig] = useState<ConfigType>({});
-  const workbookRef = useRef<{ workbook?: Excel.Workbook; fileType?: string }>(
-    {}
-  );
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={[0, 48]}>
       <Layout>
@@ -70,57 +61,33 @@ const App: React.FC = () => {
                       "选择需要匹配的列",
                       "选择匹配后要填充的列",
                     ]}
+                    setConfig={setConfig}
                     selectConfig={(colsKey, colsValue) => {
                       const config = getMatchConfig(colsKey, colsValue);
                       setConfig(config);
+                      console.log(config);
                     }}
                   />
                 </Card>
               </Col>
               <Col span={12}>
-                <Card title="选择要被修改的文件" bordered={false}>
-                  <PickerPanel
-                    uploaderButtonText="upload"
-                    selectsPlaceHolder={[
-                      "选择需要匹配的列",
-                      "选择匹配后要填充的列",
-                    ]}
-                    // selectConfig={(colsKey, colsValue) => {
-                    //   fillValues();
-                    // }}
-                    selectEnd={(
-                      workbook,
-                      index,
-                      colsKey,
-                      fillCol,
-                      fileType
-                    ) => {
-                      if (Object.keys(config).length === 0) {
-                        alert("请先选择模板");
-                        return;
-                      }
-                      workbookRef.current = { workbook, fileType };
-                      const sheet = getSheets(workbook)[index];
-                      fillValues(sheet, config, colsKey, fillCol);
-                    }}
-                  />
-                </Card>
+                {Object.keys(config).length === 0 ? null : (
+                  <Card title="选择要被修改的文件" bordered={false}>
+                    <PickerPanel
+                      uploaderButtonText="upload"
+                      selectsPlaceHolder={[
+                        "选择需要匹配的列",
+                        "选择匹配后要填充的列",
+                      ]}
+                      multiple
+                      config={config}
+                    />
+                  </Card>
+                )}
               </Col>
             </Row>
           </Content>
         </Layout>
-        <Footer style={footerStyle}>
-          <Button
-            type="primary"
-            onClick={() => {
-              const { workbook, fileType = "" } = workbookRef.current;
-              if (workbook == null) return;
-              saveFile(workbook, fileType);
-            }}
-          >
-            确定，并现在文件
-          </Button>
-        </Footer>
       </Layout>
     </Space>
   );
@@ -130,45 +97,61 @@ export default App;
 type PickPanelProps = {
   uploaderButtonText: string;
   selectsPlaceHolder: string[];
+  multiple?: boolean;
   selectConfig?: (...args: [][]) => void;
-  selectEnd?: (
-    sheet: Excel.Workbook,
-    configIndex: number,
-    colsKey: ColsType,
-    fillCol: string,
-    fileType: string
-  ) => void;
+  config?: ConfigType;
+  setConfig?: React.Dispatch<React.SetStateAction<ConfigType>>;
 };
 const PickerPanel: FC<PickPanelProps> = ({
   uploaderButtonText,
   selectsPlaceHolder,
   selectConfig,
-  selectEnd,
+  config,
+  multiple,
+  setConfig,
 }) => {
   const [sheetOptions, setSheetOptions] = useState<
     { label: string; value: number }[]
   >([]);
-  const fileType = useRef<string | unknown>("");
   const [sheetIndex, setSheetIndex] = useState<string | number>("");
-  const currentWorkBookRef = useRef<Excel.Workbook | null>(null);
+  const workBookListRef = useRef<
+    { workbook: Excel.Workbook; uid: string; type: string; name: string }[]
+  >([]);
+
   const uploadProps: UploadProps<File> = {
+    accept:
+      "application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     beforeUpload: () => {
       return false;
     },
     async onChange(info) {
+      console.log(workBookListRef.current);
       const file = info.file;
-      fileType.current = file.type;
       if (file == null) return;
       if (file.status === "removed") {
+        workBookListRef.current = workBookListRef.current.filter((it) => {
+          return it.uid !== file.uid;
+        });
+        if (workBookListRef.current.length) return;
         setSheetIndex("");
         setColKey("");
         setColV("");
         setColsHeader([]);
+        setSheetOptions([]);
+        setConfig?.({});
+        setIsOk(false);
         return;
       }
       const workbook = await loadFile(file as unknown as File);
+      workBookListRef.current.push({
+        workbook,
+        uid: file.uid,
+        name: file.name,
+        type:
+          file.type ||
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
       const configSheets = getSheets(workbook);
-      currentWorkBookRef.current = workbook;
       setSheetOptions(
         configSheets.map((it, index) => {
           return {
@@ -180,48 +163,66 @@ const PickerPanel: FC<PickPanelProps> = ({
       setSheetIndex(0);
     },
   };
-  const sheet = useMemo(() => {
-    const workbook = currentWorkBookRef.current;
+  const currentSheet = useMemo(() => {
+    const { workbook } = workBookListRef.current[0] || {};
     if (workbook == null) return;
     if (typeof sheetIndex === "string") return;
     return getSheets(workbook as Excel.Workbook)[+sheetIndex || 0];
   }, [sheetIndex]);
+
   const [colsHeader, setColsHeader] = useState<
     { label: string; value: string }[]
   >([]);
+
   const [colK, setColKey] = useState("");
   const [colV, setColV] = useState("");
-  useEffect(() => {
-    if (sheet == null) return;
-    const title = getRow(sheet, 1);
-    setColsHeader(title);
-  }, [sheet]);
 
   useEffect(() => {
-    if (sheet == null) return;
+    if (currentSheet == null) return;
+    const title = getRow(currentSheet, 1);
+    setColsHeader(title);
+  }, [currentSheet]);
+
+  const [isOk, setIsOk] = useState(false);
+
+  useEffect(() => {
+    if (currentSheet == null) return;
     if (!colV) return;
     if (!colK) return;
-    const colsValue = getColumn(sheet, colV);
-    const colsKey = getColumn(sheet, colK);
-    if (currentWorkBookRef.current == null) return;
+    const colsValue = getColumn(currentSheet, colV);
+    const colsKey = getColumn(currentSheet, colK);
     selectConfig?.(colsKey, colsValue);
-    selectEnd?.(
-      currentWorkBookRef.current as unknown as Excel.Workbook,
-      sheetIndex as number,
-      colsKey,
-      colV,
-      fileType.current as string
-    );
+    if (config == null) return;
+    if (!workBookListRef.current.length) return;
+    for (const it of workBookListRef.current) {
+      const sheet = getSheets(it.workbook)[sheetIndex as number];
+      fillValues(sheet, config, colsKey, colV);
+    }
+    setIsOk(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sheet, colV, colK]);
+  }, [currentSheet, colV, colK]);
 
   const width = 240;
 
   return (
     <>
-      <Upload {...uploadProps}>
-        <Button icon={<UploadOutlined />}>{uploaderButtonText}</Button>
-      </Upload>
+      {multiple ? (
+        <Dragger {...uploadProps} multiple={multiple}>
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">
+            Click or drag file to this area to upload
+          </p>
+          <p className="ant-upload-hint">
+            支持上传多个模板相同的文件，批量处理！
+          </p>
+        </Dragger>
+      ) : (
+        <Upload {...uploadProps}>
+          <Button icon={<UploadOutlined />}>{uploaderButtonText}</Button>
+        </Upload>
+      )}
       <div>
         <label>
           <span>选择工作表：</span>
@@ -264,6 +265,19 @@ const PickerPanel: FC<PickPanelProps> = ({
           />
         </label>
       </div>
+      {isOk ? (
+        <Button
+          type="primary"
+          onClick={() => {
+            if (!workBookListRef.current.length) return;
+            for (const { workbook, type, name } of workBookListRef.current) {
+              saveFile(workbook, type, "ok-" + name);
+            }
+          }}
+        >
+          导出文件
+        </Button>
+      ) : null}
     </>
   );
 };

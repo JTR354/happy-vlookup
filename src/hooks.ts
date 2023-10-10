@@ -1,28 +1,5 @@
 import { read, writeXLSX } from "xlsx";
 import Excel from "exceljs";
-export const useExcelJS = () => {
-  return {
-    async getPendingEditedXls(file: File) {
-      const wb = await loadFile(file);
-      const sheets = getSheets(wb);
-      const title = getRow(sheets[0], 1);
-      console.log(title);
-      const colsKey = getColumn(sheets[0], "K");
-      // console.log(colsKey);
-      const colsValue = getColumn(sheets[0], "B");
-      const config = getMatchConfig(colsKey, colsValue);
-      // console.log(config);
-      const cell = sheets[0].getCell("K8");
-      // console.log(cell.value);
-      cell.value = 8;
-      // console.log(getColumn(sheets[0], "K"));
-      fillValues(sheets[0], config, colsKey, "D");
-      setTimeout(() => {
-        saveFile(wb, file.type);
-      }, 1000);
-    },
-  };
-};
 
 export async function loadFile(file: File) {
   const blob = await file.arrayBuffer();
@@ -34,9 +11,23 @@ export async function loadFile(file: File) {
   return current;
 }
 
-export async function saveFile(workbook: Excel.Workbook, type: string) {
+export async function saveFile(
+  workbook: Excel.Workbook,
+  type: string,
+  fileName: string
+) {
   const buffer = await workbook.xlsx.writeBuffer();
-  window.open(URL.createObjectURL(new Blob([buffer], { type })));
+  const blob = new Blob([buffer], { type });
+  const link = window.URL.createObjectURL(blob);
+  let a: HTMLAnchorElement | null = document.createElement("a");
+  a.style.setProperty("display", "none");
+  a.href = link;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(link);
+  a.remove();
+  a = null;
 }
 
 export function getSheets(workbook: Excel.Workbook) {
